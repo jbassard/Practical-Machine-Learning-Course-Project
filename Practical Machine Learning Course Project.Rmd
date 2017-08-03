@@ -3,10 +3,10 @@ title: "Practical Machine Learning Course Project"
 author: "jbassard"
 date: "August 3d 2017"
 output:
+  self_contained: yes
+  md_document:
+    variant: markdown_github
   html_document: default
-  pdf_document: default
-  self_contained: no
-  word_document: default
 ---
 ## Synopsis
 This is the project assignment for the Practical Machine Learning course in Coursera's Data Science specialization track. **The purpose of this project is to create a machine-learning algorithm that can correctly identify how test subjects did the exercice of barbell bicep curls by using data from belt, forearm, arm, and dumbbell accelerometers.**
