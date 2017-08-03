@@ -1,0 +1,153 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "jbassard"
+date: "August 3d 2017"
+output:
+  html_document: default
+  pdf_document: default
+  self_contained: no
+  word_document: default
+---
+## Synopsis
+This is the project assignment for the Practical Machine Learning course in Coursera's Data Science specialization track. **The purpose of this project is to create a machine-learning algorithm that can correctly identify how test subjects did the exercice of barbell bicep curls by using data from belt, forearm, arm, and dumbbell accelerometers.**
+
+Original Training Data is available online (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) as well as Test data (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).
+
+There are five classifications of this exercise, one method is the correct way to do the exercise while the other five are common mistakes: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+### Checking for required packages and install them if necessary, then load them
+```{r}
+if (!require("knitr")) {
+	install.packages("knitr")}
+if (!require("caret")) {
+	install.packages("caret")}
+if (!require("randomForest")) {
+	install.packages("randomForest")}
+if (!require("e1071")) {
+	 install.packages("e1071")}
+if (!require("doParallel")) {
+	 install.packages("doParallel")}
+library(knitr)
+library(caret)
+library(randomForest)
+library(e1071)
+library(doParallel)
+```
+### Setting the default of echo and cache to be True throughout the whole report
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE)
+```
+## Loading data
+### Downloading data in MachineLearning folder
+```{r}
+if(!file.exists("./MachineLearning")) {
+	dir.create("./MachineLearning")}
+if(!file.exists("./MachineLearning/pml-training.csv")) {
+	fileUrl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+	download.file(fileUrl1, destfile="./MachineLearning/pml-training.csv")}
+if(!file.exists("./MachineLearning/pml-testing.csv")) {
+	fileUrl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+	download.file(fileUrl2, destfile="./MachineLearning/pml-testing.csv")}
+```
+### Loading the data
+```{r}
+training <- read.csv("./MachineLearning/pml-training.csv", na.strings = c("NA","#DIV/0!", ""))
+testing <- read.csv("./MachineLearning/pml-testing.csv", na.strings = c("NA","#DIV/0!", ""))
+set.seed(33333) # for reproducibility
+```
+## Quick Exploration of the datasets
+Remark, to limit the lenght of this report outputs generated from this exploratory analysis are not displayed.
+
+### Training set
+```{r, results="hide"}
+dim(training)
+head(training)
+str(training)
+```
+Using Dim(), head(), and str() functions, we can see that we have 19622 observations of 160 variables. Severall columns have NAs, and there are irrelevant variables.
+
+### Testing set
+```{r, results="hide"}
+dim(testing)
+head(testing)
+str(testing)
+```
+Using Dim(), head(), and str() functions, we can see that as for the training set, several columns have NAs and there are irrelevant variables. In this dataset, we have 20 observations of 160 variables.
+
+## Cleaning datasets
+The data has many variables with missing data as well as information that is not usefull to the question to answer. The columns with these irrelevant data will be erased.
+
+### Training set
+```{r}
+training <- training[, -(1:7)] # remove first 7 variables not needed for prediction (X, user-name,       raw-timestamp_part_1, raw-timestamp_part_2,cvtd_timestamp, new_window, num_window)
+NAcolumns <- colnames(testing)[colSums(is.na(testing)) > 0] # remove columns with NAs using testing set as reference
+training<-training[,!(names(training) %in% NAcolumns)]
+dim(training) # check the final number of variables
+```
+
+### Testing set
+Same cleaning is applied to the testing set.
+
+```{r}
+testing <- testing[, -(1:7)] # remove first 7 variables not needed
+testing <- testing[,!(names(testing) %in% NAcolumns)]
+dim(testing) # check the final number of variables
+```
+Both sets have 53 variables that will be used for the prediction. There are also 19622 observations in the training set and 20 in the testing set.
+
+## Preparing the data for the  training
+### Making a trainig and testing subsets
+A training subset is created with 75% of the original training dataset to be used for training and the remaining 25% to be used as the testing subset (before final testing is performed with the testing set provided for the project)
+
+```{r}
+subTrain <- createDataPartition(training$classe, p = .75, list = FALSE)
+trainingsubset <- training[subTrain,]
+testingsubset <- training[-subTrain,]
+dim(testingsubset)
+dim(trainingsubset)
+```
+### Preparing cross-validation test with trainControl
+Use of "trainControl" function in caret to do 10 cross-validation tests, and use to select the best model from the 10.
+```{r}
+tc <- trainControl(method = "cv", number = 10, verboseIter=FALSE)
+```
+
+## Training a random forest model
+To generate a predictive model, a random-forest modeling is used with all remaining predictors together with the trainControl ("tc") arguments set up before. Modeling is achieved on 3 processor cores to speed up the process (using the doParallel package).
+
+```{r}
+detectCores()
+getDoParWorkers()
+registerDoParallel(cores = 3)
+rf_model <- train(classe ~ ., data = trainingsubset, method = "rf", trControl= tc)
+```
+```{r}
+rf_model # print the model
+varImp(rf_model) #display the importance of variables in the model
+```
+The 5 most important variables are roll_belt, pitch_forearm, yaw_belt, pitch_belt, roll_forearm.
+
+## Evaluation of the model (out-of-sample error)
+For evaluation, the model is used to predict the outcome of "testingsubset" generated before from the original training set. Then the function confusionMatrix is used to calculate the accuracy of the prediction.
+```{r}
+predictions <- predict(rf_model, testingsubset)
+confusionMatrix(testingsubset$classe,predictions)
+acc <- (max(rf_model$results$Accuracy))*100 # search accuracy value
+acc
+OSE <- (100-acc) # calculate Out of Sample Error from Accuracy
+OSE
+```
+
+The random-forest model has a 99.42% accuracy, thus out-of-sample error is 0.57%, which is really good.
+
+## Answering exercise question
+The model is used to predict how 20 different test subjects did the exercice of barbell bicep curls (orginal testing dataset provided for the exercise)
+
+```{r}
+exercise_answers <- predict(rf_model, newdata=testing)
+print(exercise_answers)
+```
+
+## Conclusion
+Accuracy achieved with this random-forest model is very high using the testingsubset database. It is important to consider that the samples for this exercise are all taken from one larger sample set. Thus if the data are collected again during a different time period or with different subjects the out of sample error could be higher and the model may not be as accurate.
